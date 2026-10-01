@@ -6,7 +6,11 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import jakarta.validation.ConstraintViolationException;
 
+import java.net.URI;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -30,5 +34,51 @@ public class ValidationExceptionHandler {
         problem.setProperty("code", "VALIDATION_FAILED");
         problem.setProperty("violations", violations);
         return problem;
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    ProblemDetail handleConstraintViolation(ConstraintViolationException ex,
+                                            HttpServletRequest request) {
+
+        List<Map<String, String>> violations = ex.getConstraintViolations()
+                .stream()
+                .map(cv -> {
+                    // propertyPath = "search.page" — берём последний сегмент
+                    String field = cv.getPropertyPath() != null
+                            ? lastSegment(cv.getPropertyPath().toString())
+                            : "unknown";
+                    String code = cv.getConstraintDescriptor() != null
+                            && cv.getConstraintDescriptor().getAnnotation() != null
+                            ? cv.getConstraintDescriptor().getAnnotation()
+                            .annotationType().getSimpleName()
+                            : "INVALID";
+                    String message = cv.getMessage() != null
+                            ? cv.getMessage()
+                            : "invalid value";
+                    return Map.of(
+                            "field", field,
+                            "code", code,
+                            "message", message
+                    );
+                })
+                .toList();
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                "Validation failed for " + violations.size() + " parameter(s)"
+        );
+        problem.setTitle("Validation failed");
+        problem.setType(URI.create("https://api.example.com/problems/validation-error"));
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("code", "VALIDATION_FAILED");
+        problem.setProperty("timestamp", Instant.now().toString());
+        problem.setProperty("violations", violations);
+        return problem;
+    }
+
+    private String lastSegment(String path) {
+        // "search.page" → "page"; "search" → "search"
+        int lastDot = path.lastIndexOf('.');
+        return lastDot >= 0 ? path.substring(lastDot + 1) : path;
     }
 }
