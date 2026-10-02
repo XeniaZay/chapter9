@@ -1,5 +1,6 @@
 package com.example.validation.common;
 
+import com.example.validation.tests.UserAlreadyExistsException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -80,5 +81,21 @@ public class ValidationExceptionHandler {
         // "search.page" → "page"; "search" → "search"
         int lastDot = path.lastIndexOf('.');
         return lastDot >= 0 ? path.substring(lastDot + 1) : path;
+    }
+
+    @ExceptionHandler(UserAlreadyExistsException.class)
+    ProblemDetail handleUserExists(UserAlreadyExistsException ex,
+                                   HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT,
+                ex.getMessage()
+        );
+        problem.setTitle("User already exists");
+        problem.setType(URI.create("https://api.example.com/problems/user-already-exists"));
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("code", "USER_ALREADY_EXISTS");
+        problem.setProperty("email", ex.getEmail());
+        problem.setProperty("timestamp", Instant.now().toString());
+        return problem;
     }
 }
